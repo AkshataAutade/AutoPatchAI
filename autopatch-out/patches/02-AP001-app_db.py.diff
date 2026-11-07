@@ -1,0 +1,10 @@
+--- a/app/db.py
++++ b/app/db.py
+@@ -1,6 +1,6 @@
+ def get_user(conn, username):
+     cur = conn.cursor()
+-    cur.execute(f"SELECT id, username FROM users WHERE username = '{username}'")
++    cur.execute("SELECT id, username FROM users WHERE username = ?", (username,))
+     return cur.fetchone()
+ 
+ 

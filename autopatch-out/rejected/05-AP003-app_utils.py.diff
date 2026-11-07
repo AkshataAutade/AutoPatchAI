@@ -1,0 +1,8 @@
+--- a/app/utils.py
++++ b/app/utils.py
+@@ -11,4 +11,4 @@
+ 
+ 
+ def legacy_signature(payload):
+-    return hashlib.md5(payload.encode()).hexdigest()
++    return hashlib.sha256(payload.encode()).hexdigest()

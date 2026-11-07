@@ -1,0 +1,11 @@
+--- a/app/utils.py
++++ b/app/utils.py
+@@ -7,7 +7,7 @@
+ 
+ 
+ def cache_key(text):
+-    return hashlib.sha1(text.encode()).hexdigest()
++    return hashlib.sha256(text.encode()).hexdigest()
+ 
+ 
+ def legacy_signature(payload):
