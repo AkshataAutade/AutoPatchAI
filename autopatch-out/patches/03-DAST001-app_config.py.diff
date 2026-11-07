@@ -1,0 +1,7 @@
+--- a/app/config.py
++++ b/app/config.py
+@@ -1,4 +1,4 @@
+ import os
+ DB_PATH = "app.db"
+ API_PASSWORD = os.environ.get("API_PASSWORD", "")
+-DEBUG = True+DEBUG = False

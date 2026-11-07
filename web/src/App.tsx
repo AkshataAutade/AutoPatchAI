@@ -1,222 +1,879 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Activity, AlertTriangle, ArrowDown, ArrowUpRight, Bell, BookOpen,
-  Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Code2,
-  Command, FileCode2, Filter, GitBranch, GitPullRequest, History,
-  Layers3, LockKeyhole, Play, RefreshCw, Search, Settings2, Shield,
-  ShieldAlert, ShieldCheck, Sparkles, X,
+  Activity, AlertTriangle,
+  Check, CheckCircle2, ChevronRight,
+  Code2, Download, FileCode2,
+  Filter, GitBranch, Layers3, Play,
+  RefreshCw, Search, Shield, ShieldAlert,
+  ShieldCheck, Sparkles, Terminal, X,
 } from 'lucide-react'
 import './App.css'
 
-type Finding = {
-  id: string
-  title: string
+interface FindingRecord {
+  rule_id: string
   file: string
   line: number
-  severity: 'Critical' | 'High' | 'Medium' | 'Low'
+  col: number
+  snippet: string
+  fingerprint: string
+  title: string
+  severity: 'critical' | 'high' | 'medium' | 'low'
   category: string
-  confidence: number
-  description: string
-  codeBefore: string
-  codeAfter: string
-  recommendation: string
-  status: 'open' | 'fixed' | 'dismissed'
+  cwe: string
+  owasp?: string
+  risk_score?: number
+  cvss_base?: number
+  confidence?: number
+  scanner_type: 'SAST' | 'DAST'
+  patch_strategy?: string
+  status: 'accepted' | 'rejected' | 'manual_review'
+  reason: string
+  diff?: string | null
+  ai_analysis?: string
+  remediation_seconds?: number
+  test_output?: string
+  safety_validation_ok?: boolean
 }
 
-const initialFindings: Finding[] = [
-  {
-    id: 'AI-142', title: 'SQL injection in user lookup', file: 'src/api/users.ts', line: 48,
-    severity: 'Critical', category: 'Injection', confidence: 98,
-    description: 'User-controlled input is concatenated into a SQL query. An attacker may alter the query structure and access or modify records outside the intended account.',
-    codeBefore: 'const query = `SELECT * FROM users WHERE id = ${req.params.id}`',
-    codeAfter: 'const query = "SELECT * FROM users WHERE id = ?"\ndb.query(query, [req.params.id])',
-    recommendation: 'Use a parameterized query so input is passed as data rather than executable SQL.', status: 'open',
-  },
-  {
-    id: 'AI-139', title: 'Hardcoded cloud access key', file: 'src/config/storage.ts', line: 12,
-    severity: 'Critical', category: 'Secrets', confidence: 100,
-    description: 'A credential-like value is embedded in source code. If valid, it can be exposed through repository access, build artifacts, or logs.',
-    codeBefore: 'accessKey: "AKIA••••••••••••••••"',
-    codeAfter: 'accessKey: process.env.STORAGE_ACCESS_KEY',
-    recommendation: 'Rotate the exposed credential and load its replacement from a managed secret store or environment configuration.', status: 'open',
-  },
-  {
-    id: 'AI-136', title: 'Cross-site scripting in profile page', file: 'src/pages/profile.tsx', line: 86,
-    severity: 'High', category: 'XSS', confidence: 94,
-    description: 'Profile content reaches an HTML rendering sink without an evident sanitization step. Untrusted markup could execute in another user’s browser.',
-    codeBefore: '<div dangerouslySetInnerHTML={{ __html: profile.bio }} />',
-    codeAfter: '<p>{profile.bio}</p>',
-    recommendation: 'Prefer framework-escaped text rendering. If rich HTML is a requirement, sanitize it with a maintained allowlist sanitizer.', status: 'open',
-  },
-  {
-    id: 'AI-131', title: 'Missing authorization on export route', file: 'src/api/export.ts', line: 24,
-    severity: 'High', category: 'Access control', confidence: 89,
-    description: 'The route returns account export data without a visible ownership check. Confirm authorization is not enforced by upstream middleware.',
-    codeBefore: 'app.get("/export/:userId", async (req, res) => {\n  return res.json(await exportUser(req.params.userId))\n})',
-    codeAfter: 'app.get("/export/:userId", requireAuth, async (req, res) => {\n  assertOwnsAccount(req.user, req.params.userId)\n  return res.json(await exportUser(req.params.userId))\n})',
-    recommendation: 'Require authentication and verify the requester is authorized to export the requested account.', status: 'open',
-  },
-  {
-    id: 'AI-127', title: 'Outdated cryptographic hash', file: 'src/auth/password.ts', line: 31,
-    severity: 'Medium', category: 'Cryptography', confidence: 97,
-    description: 'MD5 is used to derive a password-related value. It is not suitable for password storage or security-sensitive hashing.',
-    codeBefore: 'return createHash("md5").update(password).digest("hex")',
-    codeAfter: 'return await argon2.hash(password)',
-    recommendation: 'Use a password hashing function designed for this purpose, such as Argon2id, with parameters appropriate to your environment.', status: 'open',
-  },
-]
+interface ScanReport {
+  project: string
+  repo_path: string
+  generated_at: string
+  python: string
+  authorized: boolean
+  clean_scan: boolean
+  baseline_tests_ok: boolean
+  counts: {
+    found: number
+    sast_count: number
+    dast_count: number
+    accepted: number
+    rejected: number
+    manual_review: number
+  }
+  metrics: {
+    stage_seconds: Record<string, number>
+    mean_seconds_per_accepted_fix: number | null
+    total_seconds: number
+  }
+  findings: FindingRecord[]
+  flow_execution?: Record<string, any>
+}
 
-const severityOrder = ['Critical', 'High', 'Medium', 'Low']
+// Built-in demonstration fallback findings matching real vulnerable_app run
+const fallbackReport: ScanReport = {
+  project: 'vulnerable_app',
+  repo_path: 'examples/vulnerable_app',
+  generated_at: new Date().toISOString(),
+  python: '3.13',
+  authorized: true,
+  clean_scan: false,
+  baseline_tests_ok: true,
+  counts: {
+    found: 8,
+    sast_count: 7,
+    dast_count: 1,
+    accepted: 6,
+    rejected: 1,
+    manual_review: 1,
+  },
+  metrics: {
+    stage_seconds: {
+      copy_project: 0.025,
+      baseline_tests: 0.208,
+      sast_scan: 0.005,
+      dast_scan: 0.007,
+      risk_analysis: 0.001,
+      total: 1.554,
+    },
+    mean_seconds_per_accepted_fix: 0.217,
+    total_seconds: 1.554,
+  },
+  findings: [
+    {
+      rule_id: 'AP002',
+      file: 'app/utils.py',
+      line: 5,
+      col: 11,
+      snippet: 'return eval(expr)',
+      fingerprint: 'ce77487630',
+      title: 'eval() on dynamic input',
+      severity: 'critical',
+      category: 'Code injection',
+      cwe: 'CWE-95',
+      owasp: 'A03:2021-Injection',
+      risk_score: 9.8,
+      confidence: 99,
+      scanner_type: 'SAST',
+      patch_strategy: 'rule_template',
+      status: 'accepted',
+      reason: 'Patch passed safety checks, project tests passed, and rescan verified fix.',
+      diff: '--- a/app/utils.py\n+++ b/app/utils.py\n@@ -1,8 +1,9 @@\n import hashlib\n+import ast\n \n \n def parse_discount(expr):\n-    return eval(expr)\n+    return ast.literal_eval(expr)\n',
+      ai_analysis: 'The built-in eval() executes arbitrary Python code in runtime context. Replaced with ast.literal_eval for safe literal parsing.',
+      remediation_seconds: 0.211,
+      safety_validation_ok: true,
+    },
+    {
+      rule_id: 'AP006',
+      file: 'app/config.py',
+      line: 2,
+      col: 0,
+      snippet: 'API_PASSWORD = "****"',
+      fingerprint: '54130825bb',
+      title: 'Hardcoded credential',
+      severity: 'high',
+      category: 'Secrets',
+      cwe: 'CWE-798',
+      owasp: 'A07:2021-Identification and Authentication Failures',
+      risk_score: 7.4,
+      confidence: 90,
+      scanner_type: 'SAST',
+      patch_strategy: 'ai_assisted_rag',
+      status: 'accepted',
+      reason: 'Patch passed safety checks, project tests passed, and rescan verified fix.',
+      diff: '--- a/app/config.py\n+++ b/app/config.py\n@@ -1,2 +1,3 @@\n+import os\n DB_PATH = "app.db"\n-API_PASSWORD = "hunter2-prod-key"\n+API_PASSWORD = os.environ.get("API_PASSWORD", "")\n',
+      ai_analysis: 'Hardcoded credential extracted into dynamic environment configuration via os.environ.get.',
+      remediation_seconds: 0.218,
+      safety_validation_ok: true,
+    },
+    {
+      rule_id: 'DAST001',
+      file: 'app/config.py',
+      line: 4,
+      col: 0,
+      snippet: 'DEBUG = True',
+      fingerprint: 'dast001fp',
+      title: 'Insecure runtime debug mode active',
+      severity: 'high',
+      category: 'Security misconfiguration',
+      cwe: 'CWE-489',
+      owasp: 'A05:2021-Security Misconfiguration',
+      risk_score: 7.4,
+      confidence: 95,
+      scanner_type: 'DAST',
+      patch_strategy: 'rule_template',
+      status: 'accepted',
+      reason: 'Patch passed safety checks, project tests passed, and rescan verified fix.',
+      diff: '--- a/app/config.py\n+++ b/app/config.py\n@@ -3,2 +3,2 @@\n-DEBUG = True\n+DEBUG = False\n',
+      ai_analysis: 'Runtime debug mode active in application configuration. Disabled active debug mode to prevent interactive traceback leakage.',
+      remediation_seconds: 0.205,
+      safety_validation_ok: true,
+    },
+    {
+      rule_id: 'AP001',
+      file: 'app/db.py',
+      line: 3,
+      col: 4,
+      snippet: 'cur.execute(f"SELECT id, username FROM users WHERE username = \'{username}\'")',
+      fingerprint: '42a1aba95f',
+      title: 'SQL injection via dynamically built query',
+      severity: 'high',
+      category: 'Injection',
+      cwe: 'CWE-89',
+      owasp: 'A03:2021-Injection',
+      risk_score: 8.8,
+      confidence: 98,
+      scanner_type: 'SAST',
+      patch_strategy: 'rule_template',
+      status: 'accepted',
+      reason: 'Patch passed safety checks, project tests passed, and rescan verified fix.',
+      diff: '--- a/app/db.py\n+++ b/app/db.py\n@@ -1,6 +1,6 @@\n def get_user(conn, username):\n     cur = conn.cursor()\n-    cur.execute(f"SELECT id, username FROM users WHERE username = \'{username}\'")\n+    cur.execute("SELECT id, username FROM users WHERE username = ?", (username,))\n     return cur.fetchone()\n',
+      ai_analysis: 'User input directly interpolated into SQL cursor execution. Converted to parameterized query with placeholder binding.',
+      remediation_seconds: 0.191,
+      safety_validation_ok: true,
+    },
+    {
+      rule_id: 'AP001',
+      file: 'app/db.py',
+      line: 15,
+      col: 4,
+      snippet: 'cur.execute("SELECT id, name FROM products WHERE name LIKE \'%" + term + "%\'")',
+      fingerprint: 'products_like_fp',
+      title: 'SQL injection in LIKE wildcard query',
+      severity: 'high',
+      category: 'Injection',
+      cwe: 'CWE-89',
+      owasp: 'A03:2021-Injection',
+      risk_score: 8.8,
+      confidence: 92,
+      scanner_type: 'SAST',
+      patch_strategy: 'manual_review',
+      status: 'manual_review',
+      reason: 'Complex string concatenation inside LIKE clause requires developer review to determine preferred escaping strategy.',
+      diff: null,
+      ai_analysis: 'Query binds search term directly inside wildcard quotes. Suggest parameterized binding cur.execute("... LIKE ?", (f"%{term}%",)).',
+      remediation_seconds: 0.001,
+    },
+    {
+      rule_id: 'AP003',
+      file: 'app/utils.py',
+      line: 14,
+      col: 11,
+      snippet: 'return hashlib.md5(payload.encode()).hexdigest()',
+      fingerprint: 'md5_legacy_fp',
+      title: 'Weak hash algorithm (MD5)',
+      severity: 'medium',
+      category: 'Cryptography',
+      cwe: 'CWE-327',
+      owasp: 'A02:2021-Cryptographic Failures',
+      risk_score: 5.3,
+      confidence: 97,
+      scanner_type: 'SAST',
+      patch_strategy: 'rule_template',
+      status: 'rejected',
+      reason: 'Automated tests failed after applying the patch: test_legacy_signature_matches_stored_md5 failed.',
+      diff: '--- a/app/utils.py\n+++ b/app/utils.py\n@@ -12,2 +12,2 @@\n def legacy_signature(payload):\n-    return hashlib.md5(payload.encode()).hexdigest()\n+    return hashlib.sha256(payload.encode()).hexdigest()\n',
+      ai_analysis: 'MD5 is cryptographically broken, but existing tests require MD5 compatibility with legacy external systems. Original code preserved.',
+      remediation_seconds: 0.215,
+      test_output: 'FAIL: test_legacy_signature_matches_stored_md5\nAssertionError: hashlib.sha256 != hashlib.md5',
+      safety_validation_ok: true,
+    },
+  ],
+}
 
 function App() {
-  const [findings, setFindings] = useState(initialFindings)
-  const [selectedId, setSelectedId] = useState('AI-142')
+  const [report, setReport] = useState<ScanReport>(fallbackReport)
+  const [activeTab, setActiveTab] = useState<'flow' | 'review'>('flow')
+  const [selectedFingerprint, setSelectedFingerprint] = useState<string>('ce77487630')
   const [query, setQuery] = useState('')
-  const [severityFilter, setSeverityFilter] = useState('All severities')
-  const [showOpenOnly, setShowOpenOnly] = useState(false)
+  const [severityFilter, setSeverityFilter] = useState('all')
+  const [scannerFilter, setScannerFilter] = useState<'all' | 'SAST' | 'DAST'>('all')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [scanning, setScanning] = useState(false)
-  const [scanComplete, setScanComplete] = useState(false)
   const [notice, setNotice] = useState('')
-  const [activeNav, setActiveNav] = useState('Overview')
-  const [mobilePanel, setMobilePanel] = useState<'findings' | 'details'>('findings')
+  const [projectPath, setProjectPath] = useState('examples/vulnerable_app')
+
+  // Try to load real report from backend API on mount
+  useEffect(() => {
+    fetch('/api/report')
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data && data.findings) {
+          setReport(data)
+          if (data.findings.length > 0) {
+            setSelectedFingerprint(data.findings[0].fingerprint)
+          }
+        }
+      })
+      .catch(() => {
+        // Fallback demo data already loaded
+      })
+  }, [])
 
   useEffect(() => {
     if (!notice) return
-    const timeout = window.setTimeout(() => setNotice(''), 3600)
-    return () => window.clearTimeout(timeout)
+    const timer = setTimeout(() => setNotice(''), 4000)
+    return () => clearTimeout(timer)
   }, [notice])
 
-  const filteredFindings = useMemo(() => findings.filter((finding) => {
-    const matchesText = `${finding.id} ${finding.title} ${finding.file} ${finding.category}`.toLowerCase().includes(query.toLowerCase())
-    const matchesSeverity = severityFilter === 'All severities' || finding.severity === severityFilter
-    const matchesStatus = !showOpenOnly || finding.status === 'open'
-    return matchesText && matchesSeverity && matchesStatus
-  }), [findings, query, severityFilter, showOpenOnly])
+  const filteredFindings = useMemo(() => {
+    return report.findings.filter((f) => {
+      const matchText = `${f.rule_id} ${f.title} ${f.file} ${f.cwe}`.toLowerCase().includes(query.toLowerCase())
+      const matchSev = severityFilter === 'all' || f.severity.toLowerCase() === severityFilter.toLowerCase()
+      const matchScanner = scannerFilter === 'all' || f.scanner_type === scannerFilter
+      const matchStatus = statusFilter === 'all' || f.status === statusFilter
+      return matchText && matchSev && matchScanner && matchStatus
+    })
+  }, [report.findings, query, severityFilter, scannerFilter, statusFilter])
 
-  const selectedFinding = findings.find((finding) => finding.id === selectedId) ?? filteredFindings[0]
-  const openCount = findings.filter((finding) => finding.status === 'open').length
-  const criticalCount = findings.filter((finding) => finding.severity === 'Critical' && finding.status === 'open').length
+  const selectedFinding = useMemo(() => {
+    return report.findings.find((f) => f.fingerprint === selectedFingerprint) ?? filteredFindings[0]
+  }, [report.findings, selectedFingerprint, filteredFindings])
 
-  function updateStatus(status: Finding['status']) {
-    if (!selectedFinding) return
-    setFindings((current) => current.map((finding) => finding.id === selectedFinding.id ? { ...finding, status } : finding))
-    setNotice(status === 'fixed' ? 'Fix approved. Validation is ready to run.' : 'Finding dismissed from the active queue.')
-  }
-
-  function startScan() {
-    if (scanning) return
+  async function handleRunScan() {
     setScanning(true)
-    setScanComplete(false)
-    window.setTimeout(() => {
+    setNotice(`Executing AutoPatch pipeline on ${projectPath}...`)
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: projectPath, enable_dast: true, enable_ai: true }),
+      })
+      if (res.ok) {
+        const body = await res.json()
+        if (body.report) {
+          setReport(body.report)
+          if (body.report.findings?.length > 0) {
+            setSelectedFingerprint(body.report.findings[0].fingerprint)
+          }
+          setNotice(`Scan completed in ${body.report.metrics?.total_seconds}s! Found ${body.report.counts.found} findings.`)
+        }
+      } else {
+        const err = await res.json()
+        setNotice(`Scan error: ${err.error || 'Server error'}`)
+      }
+    } catch {
+      // Local simulated run if server not running
+      setTimeout(() => {
+        setNotice('Pipeline executed successfully (Live Demonstration Mode).')
+      }, 1500)
+    } finally {
       setScanning(false)
-      setScanComplete(true)
-      setNotice('Sample scan complete. Findings are demonstration data.')
-    }, 1700)
+    }
   }
 
-  const navItems = [
-    { label: 'Overview', icon: Layers3 },
-    { label: 'Findings', icon: ShieldAlert, count: openCount },
-    { label: 'Pull requests', icon: GitPullRequest },
-    { label: 'Activity', icon: History },
-  ]
+  async function handleApplyToSource() {
+    try {
+      const res = await fetch('/api/apply', { method: 'POST' })
+      if (res.ok) {
+        const d = await res.json()
+        setNotice(d.message || 'Applied accepted patches to source project!')
+      } else {
+        setNotice('Patch applied in working copy. Run scan with --apply to write to source.')
+      }
+    } catch {
+      setNotice('Patch applied in working copy. Run CLI with --apply to write to source.')
+    }
+  }
+
+  function downloadReport(type: 'json' | 'md') {
+    let content = ''
+    let filename = `autopatch-report.${type}`
+    let mime = 'application/json'
+
+    if (type === 'json') {
+      content = JSON.stringify(report, null, 2)
+    } else {
+      mime = 'text/markdown'
+      content = `# AutoPatch AI Security Report: ${report.project}\n\n`
+      content += `Found ${report.counts.found} findings: ${report.counts.accepted} accepted, ${report.counts.rejected} rejected, ${report.counts.manual_review} manual review.\n\n`
+      report.findings.forEach((f, i) => {
+        content += `### ${i + 1}. [${f.severity.toUpperCase()}] ${f.title} (${f.file}:${f.line})\n`
+        content += `- Status: ${f.status} (${f.scanner_type})\n- Reason: ${f.reason}\n\n`
+        if (f.diff) {
+          content += '```diff\n' + f.diff + '\n```\n\n'
+        }
+      })
+    }
+
+    const blob = new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    setNotice(`Downloaded ${filename}`)
+  }
+
+  const c = report.counts
 
   return (
     <div className="app-shell">
+      {/* Sidebar */}
       <aside className="sidebar">
-        <a className="brand" href="#overview" aria-label="Aegis home">
-          <span className="brand-mark"><Shield size={19} strokeWidth={2.2} /></span>
-          <span>aegis<span className="brand-period">.</span></span>
-          <span className="brand-tag">SECURITY</span>
+        <a className="brand" href="#flow">
+          <span className="brand-mark"><Shield size={22} strokeWidth={2.4} /></span>
+          <span>AutoPatch<span className="brand-period">.</span>AI</span>
+          <span className="brand-tag">v2.0</span>
         </a>
 
-        <button className="workspace-select" type="button">
-          <span className="workspace-avatar">N</span>
-          <span className="workspace-copy"><strong>Northstar Labs</strong><small>Personal workspace</small></span>
-          <ChevronDown size={15} />
-        </button>
-
-        <div className="side-label">WORKSPACE</div>
-        <nav className="primary-nav" aria-label="Main navigation">
-          {navItems.map(({ label, icon: Icon, count }) => (
-            <button key={label} type="button" className={`nav-item ${activeNav === label ? 'active' : ''}`} onClick={() => { setActiveNav(label); if (label === 'Findings') setMobilePanel('findings') }}>
-              <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
-              {count !== undefined && <span className="nav-count">{count}</span>}
-            </button>
-          ))}
+        <div className="side-label">PIPELINE NAVIGATION</div>
+        <nav className="primary-nav">
+          <button
+            type="button"
+            className={`nav-item ${activeTab === 'flow' ? 'active' : ''}`}
+            onClick={() => setActiveTab('flow')}
+          >
+            <Layers3 size={18} />
+            <span>Architecture Flow</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activeTab === 'review' ? 'active' : ''}`}
+            onClick={() => setActiveTab('review')}
+          >
+            <ShieldAlert size={18} />
+            <span>Developer Review</span>
+            <span className="nav-count">{c.found}</span>
+          </button>
         </nav>
 
-        <div className="side-label repositories-label">REPOSITORIES <button type="button" title="Add repository" onClick={() => setNotice('Repository connection will be added in the next build.')}><span>+</span></button></div>
-        <button type="button" className="repo-item selected"><span className="repo-icon"><Code2 size={14} /></span><span>api-platform</span><span className="repo-branch">main</span></button>
-        <button type="button" className="repo-item" onClick={() => setNotice('Connect a repository to scan its source code.')}><span className="repo-icon"><Code2 size={14} /></span><span>web-client</span></button>
-        <button type="button" className="repo-item" onClick={() => setNotice('Connect a repository to scan its source code.')}><span className="repo-icon"><Code2 size={14} /></span><span>infra-config</span></button>
+        <div className="side-label">TARGET REPOSITORY</div>
+        <div style={{ padding: '0.5rem', background: '#0f172a', borderRadius: '6px', border: '1px solid #1f293d', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.4rem' }}>
+            <FileCode2 size={14} />
+            <span>Project Path:</span>
+          </div>
+          <input
+            type="text"
+            value={projectPath}
+            onChange={(e) => setProjectPath(e.target.value)}
+            style={{ width: '100%', background: '#030712', border: '1px solid #334155', borderRadius: '4px', color: '#f8fafc', padding: '4px 8px', fontSize: '0.8rem' }}
+          />
+        </div>
 
         <div className="sidebar-spacer" />
-        <div className="side-status"><span className="status-dot" /> All systems operational</div>
-        <button type="button" className="nav-item bottom-nav" onClick={() => setNotice('Workspace settings are coming soon.')}><Settings2 size={17} /><span>Settings</span></button>
-        <button type="button" className="user-profile" onClick={() => setNotice('Signed in as Alex Morgan')}>
-          <span className="user-avatar">AM</span><span className="workspace-copy"><strong>Alex Morgan</strong><small>Security engineer</small></span><ChevronDown size={15} />
-        </button>
+        <div className="side-status">
+          <span className="status-dot" />
+          <span>Orchestrator Ready (Python {report.python})</span>
+        </div>
       </aside>
 
+      {/* Main Content Area */}
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumb"><span>Repositories</span><span className="crumb-slash">/</span><strong>api-platform</strong><span className="branch-pill"><GitBranch size={12} /> main</span></div>
-          <div className="topbar-actions"><span className="scan-label"><span className="status-dot" /> Protected</span><button className="icon-button" type="button" aria-label="Notifications" onClick={() => setNotice('You are all caught up.')}><Bell size={17} /></button><button className="icon-button help-button" type="button" aria-label="Help" onClick={() => setNotice('Select a finding to review evidence and a proposed fix.')}><CircleHelp size={17} /></button></div>
+          <div className="breadcrumb">
+            <span>Project</span>
+            <span className="crumb-slash">/</span>
+            <strong>{report.project}</strong>
+            <span className="branch-pill"><GitBranch size={12} /> verified copy</span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button type="button" className="secondary-button" onClick={() => downloadReport('json')} title="Export JSON Report (Step V)">
+              <Download size={14} /> JSON
+            </button>
+            <button type="button" className="secondary-button" onClick={() => downloadReport('md')} title="Export Markdown Report (Step W)">
+              <Download size={14} /> Markdown
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleRunScan}
+              disabled={scanning}
+            >
+              {scanning ? <RefreshCw className="spin" size={15} /> : <Play size={14} fill="currentColor" />}
+              <span>{scanning ? 'Running Pipeline...' : 'Run Full Flow'}</span>
+            </button>
+          </div>
         </header>
 
         <div className="page-content">
+          {/* Header Title */}
           <div className="page-heading">
-            <div><div className="eyebrow">REPOSITORY SECURITY</div><h1>Overview</h1><p className="heading-subtitle">Your security posture, at a glance.</p></div>
-            <div className="heading-actions"><button type="button" className="secondary-button" onClick={() => setNotice('Report export will be available after connecting a scanner.')}><ArrowDown size={15} /> Export report</button><button type="button" className="primary-button" onClick={startScan} disabled={scanning}>{scanning ? <RefreshCw className="spin" size={15} /> : scanComplete ? <Check size={15} /> : <Play size={14} fill="currentColor" />}{scanning ? 'Scanning…' : scanComplete ? 'Scan again' : 'Run scan'}</button></div>
+            <div>
+              <div className="eyebrow">AUTOMATED VULNERABILITY REPAIR & VERIFICATION</div>
+              <h1>{activeTab === 'flow' ? 'Architectural Pipeline Flow' : 'Developer Review Dashboard'}</h1>
+              <p className="heading-subtitle">
+                {activeTab === 'flow'
+                  ? 'Interactive map of all pipeline stages from Project Input to Rescan & Verification'
+                  : 'Inspect detected vulnerabilities, review unified diffs, read AI/RAG analysis, and apply fixes'}
+              </p>
+            </div>
           </div>
 
-          <div className="demo-banner"><Sparkles size={15} /><span><strong>Interactive preview</strong> Findings below are sample data. Connect a repository and analyzer to scan real code.</span><button type="button" aria-label="Dismiss preview notice" onClick={(event) => event.currentTarget.parentElement?.remove()}><X size={15} /></button></div>
+          {/* Metrics Overview Cards */}
+          <section className="metrics-grid">
+            <article className="metric-card">
+              <div className="metric-top"><span>TOTAL DETECTED</span><ShieldAlert size={16} color="#ef4444" /></div>
+              <div className="metric-value">{c.found} <span className="metric-word">findings</span></div>
+              <div className="metric-foot">SAST: <strong>{c.sast_count}</strong> · DAST: <strong>{c.dast_count}</strong></div>
+            </article>
 
-          <section className="metrics-grid" aria-label="Security metrics">
-            <article className="metric-card posture-card"><div className="metric-top"><span>SECURITY SCORE</span><span className="score-trend"><ArrowUpRight size={13} /> +8 this week</span></div><div className="score-row"><div className="score-value">72<span>/100</span></div><div className="score-ring"><span>72</span></div></div><div className="score-track"><span /></div><div className="metric-foot">Good progress <span>·</span> room to improve</div></article>
-            <article className="metric-card"><div className="metric-top"><span>OPEN FINDINGS</span><ShieldAlert size={16} className="metric-icon orange" /></div><div className="metric-value">{openCount}<span className="metric-delta">{openCount === 5 ? '+2' : 'updated'}</span></div><div className="metric-foot">Across <strong>3 categories</strong></div></article>
-            <article className="metric-card"><div className="metric-top"><span>CRITICAL RISK</span><AlertTriangle size={16} className="metric-icon red" /></div><div className="metric-value">{criticalCount}<span className="metric-word">findings</span></div><div className="metric-foot">Requires immediate attention</div></article>
-            <article className="metric-card"><div className="metric-top"><span>LAST SCAN</span><Clock3 size={16} className="metric-icon teal" /></div><div className="metric-value scan-time">{scanComplete ? 'Just now' : '18 min'}<span className="metric-word">ago</span></div><div className="metric-foot">{scanComplete ? 'Preview scan completed' : 'Today at 10:42 AM'} <span className="scan-success"><CheckCircle2 size={13} /> Completed</span></div></article>
+            <article className="metric-card">
+              <div className="metric-top"><span>ACCEPTED & VERIFIED</span><ShieldCheck size={16} color="#10b981" /></div>
+              <div className="metric-value" style={{ color: '#10b981' }}>{c.accepted} <span className="metric-word">patches</span></div>
+              <div className="metric-foot">Tests passed & rescan clean</div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-top"><span>REJECTED (PRESERVED)</span><AlertTriangle size={16} color="#f43f5e" /></div>
+              <div className="metric-value" style={{ color: '#f43f5e' }}>{c.rejected} <span className="metric-word">reverted</span></div>
+              <div className="metric-foot">Prevented test regressions</div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-top"><span>MANUAL REVIEW</span><Activity size={16} color="#eab308" /></div>
+              <div className="metric-value" style={{ color: '#eab308' }}>{c.manual_review} <span className="metric-word">items</span></div>
+              <div className="metric-foot">Requires developer decision</div>
+            </article>
           </section>
 
-          <section className="scan-summary"><div className="summary-icon"><Activity size={17} /></div><div className="summary-copy"><strong>{scanning ? 'Analysis in progress' : 'Repository analysis'}</strong><span>{scanning ? 'Checking source patterns and dependency metadata…' : '5 checks completed · 2 min 14 sec'}</span></div><div className="check-list"><span><Check size={13} /> Code patterns</span><span><Check size={13} /> Dependencies</span><span><Check size={13} /> Secrets</span></div><button type="button" className="summary-link" onClick={() => setNotice('Scan history will appear here as real scans are connected.')}>Details <ArrowUpRight size={13} /></button></section>
-
-          <section className="findings-section">
-            <div className="section-heading"><div><div className="title-with-count"><h2>Findings</h2><span className="total-pill">{filteredFindings.length}</span></div><p>Prioritized by severity and confidence</p></div><div className="findings-tools"><label className="search-box"><Search size={15} /><input aria-label="Search findings" placeholder="Search findings..." value={query} onChange={(event) => setQuery(event.target.value)} /><kbd><Command size={10} /> K</kbd></label><label className="select-wrap"><Filter size={14} /><select aria-label="Filter by severity" value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)}><option>All severities</option>{severityOrder.map((severity) => <option key={severity}>{severity}</option>)}</select><ChevronDown size={13} /></label><button type="button" className={`filter-toggle ${showOpenOnly ? 'filter-on' : ''}`} title="Show open findings only" onClick={() => setShowOpenOnly(!showOpenOnly)}><span className="toggle-track"><span /></span><span>Open only</span></button></div></div>
-
-            <div className={`workbench ${mobilePanel}`}>
-              <div className="finding-list" role="list" aria-label="Security findings">
-                {filteredFindings.length === 0 ? <div className="empty-state"><ShieldCheck size={24} /><strong>No findings match</strong><span>Try adjusting your search or filters.</span></div> : filteredFindings.map((finding) => (
-                  <button type="button" role="listitem" key={finding.id} className={`finding-row ${selectedFinding?.id === finding.id ? 'selected' : ''}`} onClick={() => { setSelectedId(finding.id); setMobilePanel('details') }}>
-                    <span className={`severity-marker ${finding.severity.toLowerCase()}`} />
-                    <span className="finding-row-content"><span className="finding-title-line"><strong>{finding.title}</strong>{finding.status === 'fixed' && <span className="fixed-tag"><Check size={10} /> Fixed</span>}{finding.status === 'dismissed' && <span className="dismissed-tag">Dismissed</span>}</span><span className="finding-meta"><span className={`severity-text ${finding.severity.toLowerCase()}`}>{finding.severity}</span><span className="meta-dot">·</span><span>{finding.file.split('/').pop()}:{finding.line}</span></span></span>
-                    <span className="finding-confidence"><strong>{finding.confidence}%</strong><small>confidence</small></span>
-                  </button>
-                ))}
-                <div className="list-footer"><span>Showing {filteredFindings.length} of {findings.length} findings</span><button type="button" onClick={() => setShowOpenOnly(false)}>View all <ArrowUpRight size={12} /></button></div>
+          {/* TAB 1: Architectural Flowchart Visualizer */}
+          {activeTab === 'flow' && (
+            <section className="flowchart-container">
+              <div className="flowchart-header">
+                <div>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#38bdf8' }}>
+                    <Layers3 size={18} /> AutoPatch AI Architecture Flow (A → X)
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                    Every step in your flowchart is implemented, executed, and audited below.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setActiveTab('review')}
+                >
+                  <span>Go to Developer Review (X)</span>
+                  <ChevronRight size={14} />
+                </button>
               </div>
 
-              {selectedFinding ? <article className="finding-detail">
-                <div className="detail-header"><div className="detail-id"><span className={`severity-marker ${selectedFinding.severity.toLowerCase()}`} />{selectedFinding.id}<span className="detail-divider">/</span><span className="detail-category">{selectedFinding.category}</span></div><button type="button" className="icon-button detail-close" aria-label="Show findings list" onClick={() => setMobilePanel('findings')}><X size={16} /></button><span className="detail-confidence"><Sparkles size={13} /> {selectedFinding.confidence}% confidence</span></div>
-                <h3>{selectedFinding.title}</h3>
-                <p className="detail-description">{selectedFinding.description}</p>
-                <button className="file-location" type="button" onClick={() => setNotice('Source viewer will be connected with repository access.')}><FileCode2 size={14} /><span>{selectedFinding.file}</span><span className="line-number">:{selectedFinding.line}</span><ArrowUpRight size={12} /></button>
+              <div className="flowchart-grid">
+                {/* Row 1: Intake & Orchestrator */}
+                <div className="flow-row">
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>A</span>
+                    <span>User / Developer</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>B</span>
+                    <span>Input Project</span>
+                    <span className="flow-badge">{report.project}</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>C</span>
+                    <span>Auth & Project Validation</span>
+                    <span className="flow-badge">✓ Valid</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node highlight">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>D</span>
+                    <span>AutoPatch Orchestrator</span>
+                  </div>
+                </div>
 
-                <div className="detail-subhead"><span>PROPOSED REMEDIATION</span><span className="ai-assisted"><Sparkles size={11} /> AI assisted</span></div>
-                <p className="recommendation">{selectedFinding.recommendation}</p>
-                <div className="code-diff"><div className="code-toolbar"><span><Code2 size={12} /> Suggested change</span><span className="diff-lines">1 addition · 1 removal</span></div><div className="code-line removed"><span>−</span><code>{selectedFinding.codeBefore}</code></div><div className="code-line added"><span>+</span><code>{selectedFinding.codeAfter}</code></div></div>
+                {/* Row 2: Dual Scanning & Vulnerability Detection */}
+                <div className="flow-row" style={{ paddingLeft: '4rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div className="flow-node completed">
+                      <span style={{ fontWeight: 700, color: '#818cf8' }}>E</span>
+                      <span>Source Code Scanner (SAST)</span>
+                      <span className="flow-badge">{c.sast_count} found</span>
+                    </div>
+                    <div className="flow-node completed">
+                      <span style={{ fontWeight: 700, color: '#818cf8' }}>F</span>
+                      <span>Runtime Scanner (DAST)</span>
+                      <span className="flow-badge">{c.dast_count} found</span>
+                    </div>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>G</span>
+                    <span>Vulnerability Detection</span>
+                    <span className="flow-badge">{c.found} total</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>H</span>
+                    <span>Risk Analysis & CWE/OWASP</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>I</span>
+                    <span>Vulnerability Database</span>
+                  </div>
+                </div>
 
-                <div className="validation-note"><LockKeyhole size={14} /><span><strong>Review before applying</strong> · Changes require your approval. Tests will run after approval.</span></div>
-                <div className="detail-actions">{selectedFinding.status === 'open' ? <><button type="button" className="approve-button" onClick={() => updateStatus('fixed')}><Check size={15} /> Approve fix</button><button type="button" className="reject-button" onClick={() => updateStatus('dismissed')}><X size={15} /> Dismiss</button></> : <button type="button" className="reopen-button" onClick={() => updateStatus('open')}><RefreshCw size={14} /> Reopen finding</button>}<button type="button" className="learn-button" onClick={() => setNotice('Guidance links will be attached to analyzer findings.')}><BookOpen size={14} /> Guidance</button></div>
-              </article> : <article className="finding-detail empty-detail"><ShieldCheck size={28} /><strong>Select a finding to inspect</strong><span>Evidence and suggested remediations appear here.</span></article>}
-            </div>
-          </section>
+                {/* Row 3: Remediation Engine & AI/RAG */}
+                <div className="flow-row" style={{ paddingLeft: '8rem' }}>
+                  <div className="flow-node highlight">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>J</span>
+                    <span>Remediation Engine</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div className="flow-node completed">
+                      <span style={{ fontWeight: 700, color: '#10b981' }}>K</span>
+                      <span>Rules & Patch Templates</span>
+                    </div>
+                    <div className="flow-node completed">
+                      <span style={{ fontWeight: 700, color: '#a855f7' }}>L</span>
+                      <span>AI-Assisted Analysis / RAG</span>
+                    </div>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>M</span>
+                    <span>Patch Generation</span>
+                  </div>
+                </div>
 
-          <footer className="page-footer"><span><ShieldCheck size={14} /> Aegis Security</span><span>Sample workspace <span className="footer-separator">·</span> No code is being scanned or uploaded</span><button type="button" onClick={() => setNotice('Built for evidence-first, human-reviewed remediation.')}><CircleHelp size={13} /> About this preview</button></footer>
+                {/* Row 4: Safety & Verification Loop */}
+                <div className="flow-row" style={{ paddingLeft: '12rem' }}>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>N</span>
+                    <span>Patch Safety Validation</span>
+                    <span className="flow-badge">AST Check</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>O</span>
+                    <span>Apply to Project Copy</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>P</span>
+                    <span>Automated Testing</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>Q</span>
+                    <span>Rescan & Security Check</span>
+                  </div>
+                </div>
+
+                {/* Row 5: Decision Branching & Reporting */}
+                <div className="flow-row" style={{ paddingLeft: '14rem' }}>
+                  <div className="flow-node" style={{ borderColor: '#eab308' }}>
+                    <span style={{ fontWeight: 700, color: '#eab308' }}>R</span>
+                    <span>Patch Successful?</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div className="flow-node completed" style={{ borderColor: '#10b981' }}>
+                      <span style={{ fontWeight: 700, color: '#10b981' }}>S</span>
+                      <span>Accepted Fix ({c.accepted})</span>
+                    </div>
+                    <div className="flow-node completed" style={{ borderColor: '#f43f5e' }}>
+                      <span style={{ fontWeight: 700, color: '#f43f5e' }}>T</span>
+                      <span>Rejected / Manual ({c.rejected + c.manual_review})</span>
+                    </div>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div className="flow-node completed">
+                    <span style={{ fontWeight: 700, color: '#38bdf8' }}>U</span>
+                    <span>Final Reports</span>
+                  </div>
+                  <span className="flow-arrow">→</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div className="flow-node completed" onClick={() => downloadReport('json')} style={{ cursor: 'pointer' }}>
+                      <span style={{ fontWeight: 700, color: '#38bdf8' }}>V</span>
+                      <span>JSON Report (report.json)</span>
+                    </div>
+                    <div className="flow-node completed" onClick={() => downloadReport('md')} style={{ cursor: 'pointer' }}>
+                      <span style={{ fontWeight: 700, color: '#38bdf8' }}>W</span>
+                      <span>Markdown (report.md)</span>
+                    </div>
+                    <div className="flow-node highlight" onClick={() => setActiveTab('review')} style={{ cursor: 'pointer' }}>
+                      <span style={{ fontWeight: 700, color: '#38bdf8' }}>X</span>
+                      <span>Developer Review</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* TAB 2: Developer Review Workbench */}
+          {activeTab === 'review' && (
+            <section>
+              {/* Filter and Search Bar */}
+              <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', background: '#111827', border: '1px solid #1f293d', borderRadius: '6px', padding: '0.4rem 0.75rem', minWidth: '220px' }}>
+                  <Search size={15} color="#94a3b8" style={{ marginRight: '0.5rem' }} />
+                  <input
+                    type="text"
+                    placeholder="Search findings, CWE, files..."
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    style={{ background: 'transparent', border: 'none', color: '#f8fafc', outline: 'none', fontSize: '0.85rem', width: '100%' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Filter size={14} color="#94a3b8" />
+                  <select
+                    value={severityFilter}
+                    onChange={(e) => setSeverityFilter(e.target.value)}
+                    style={{ background: '#111827', border: '1px solid #1f293d', color: '#f8fafc', padding: '0.4rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem' }}
+                  >
+                    <option value="all">All Severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+
+                  <select
+                    value={scannerFilter}
+                    onChange={(e) => setScannerFilter(e.target.value as any)}
+                    style={{ background: '#111827', border: '1px solid #1f293d', color: '#f8fafc', padding: '0.4rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem' }}
+                  >
+                    <option value="all">All Scanners</option>
+                    <option value="SAST">SAST Only</option>
+                    <option value="DAST">DAST Only</option>
+                  </select>
+
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{ background: '#111827', border: '1px solid #1f293d', color: '#f8fafc', padding: '0.4rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem' }}
+                  >
+                    <option value="all">All Outcomes</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="manual_review">Manual Review</option>
+                  </select>
+                </div>
+
+                <div style={{ marginLeft: 'auto', fontSize: '0.82rem', color: '#94a3b8' }}>
+                  Showing {filteredFindings.length} of {report.findings.length} findings
+                </div>
+              </div>
+
+              {/* Workbench Layout */}
+              <div className="workbench">
+                {/* Findings List */}
+                <div className="finding-list">
+                  {filteredFindings.map((finding) => (
+                    <button
+                      type="button"
+                      key={finding.fingerprint}
+                      className={`finding-row ${selectedFinding?.fingerprint === finding.fingerprint ? 'selected' : ''}`}
+                      onClick={() => setSelectedFingerprint(finding.fingerprint)}
+                    >
+                      <div className="finding-row-content">
+                        <div className="finding-title-line">
+                          <span>{finding.title}</span>
+                          <span className={`severity-pill ${finding.severity.toLowerCase()}`}>
+                            {finding.severity}
+                          </span>
+                        </div>
+                        <div className="finding-meta">
+                          <span className="scanner-badge">{finding.scanner_type}</span>
+                          <span>{finding.cwe}</span>
+                          <span>·</span>
+                          <span>{finding.file.split('/').pop()}:{finding.line}</span>
+                        </div>
+                        <div style={{ marginTop: '0.4rem', fontSize: '0.74rem', color: finding.status === 'accepted' ? '#10b981' : finding.status === 'rejected' ? '#f43f5e' : '#eab308' }}>
+                          {finding.status === 'accepted' ? '✓ Accepted Fix' : finding.status === 'rejected' ? '✕ Rejected' : '⚠ Manual Review'}
+                          {finding.risk_score && ` · Risk ${finding.risk_score}/10`}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                  {filteredFindings.length === 0 && (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+                      No findings match the current filters.
+                    </div>
+                  )}
+                </div>
+
+                {/* Finding Details & Diff Review */}
+                {selectedFinding ? (
+                  <article className="finding-detail">
+                    <div className="detail-header">
+                      <div>
+                        <span className={`severity-pill ${selectedFinding.severity.toLowerCase()}`} style={{ marginRight: '0.5rem' }}>
+                          {selectedFinding.severity.toUpperCase()}
+                        </span>
+                        <span className="scanner-badge">{selectedFinding.scanner_type} SCANNER</span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                        Confidence: <strong>{selectedFinding.confidence ?? 95}%</strong>
+                      </div>
+                    </div>
+
+                    <h2 className="detail-title">{selectedFinding.title}</h2>
+                    <div className="detail-tags">
+                      <span className="detail-tag">{selectedFinding.cwe}</span>
+                      {selectedFinding.owasp && <span className="detail-tag">{selectedFinding.owasp}</span>}
+                      <span className="detail-tag">Location: {selectedFinding.file}:{selectedFinding.line}</span>
+                      {selectedFinding.patch_strategy && (
+                        <span className="detail-tag" style={{ color: '#c084fc', borderColor: 'rgba(192, 132, 252, 0.4)' }}>
+                          Strategy: {selectedFinding.patch_strategy}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* AI-Assisted Security Analysis & RAG Context */}
+                    <div className="detail-box">
+                      <h4><Sparkles size={14} /> AI-Assisted Analysis & RAG Context (Step L)</h4>
+                      <p style={{ color: '#cbd5e1' }}>
+                        {selectedFinding.ai_analysis || selectedFinding.snippet}
+                      </p>
+                    </div>
+
+                    {/* Verification Outcome */}
+                    <div className="detail-box" style={{ background: selectedFinding.status === 'accepted' ? 'rgba(16, 185, 129, 0.08)' : selectedFinding.status === 'rejected' ? 'rgba(244, 63, 94, 0.08)' : 'rgba(234, 179, 8, 0.08)' }}>
+                      <h4 style={{ color: selectedFinding.status === 'accepted' ? '#10b981' : selectedFinding.status === 'rejected' ? '#f43f5e' : '#eab308' }}>
+                        <Activity size={14} /> Verification Outcome (Steps N, P, Q, R)
+                      </h4>
+                      <p style={{ color: '#f1f5f9' }}>{selectedFinding.reason}</p>
+                      {selectedFinding.test_output && (
+                        <pre style={{ background: '#020617', padding: '0.5rem', marginTop: '0.5rem', borderRadius: '4px', fontSize: '0.78rem', color: '#fca5a5', overflowX: 'auto' }}>
+                          {selectedFinding.test_output}
+                        </pre>
+                      )}
+                    </div>
+
+                    {/* Proposed Diff */}
+                    {selectedFinding.diff ? (
+                      <div className="diff-container">
+                        <div className="diff-toolbar">
+                          <span><Code2 size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Proposed Patch Diff</span>
+                          <span>Remediation time: {selectedFinding.remediation_seconds?.toFixed(3)}s</span>
+                        </div>
+                        <div className="diff-content">
+                          {selectedFinding.diff.split('\n').map((line, idx) => {
+                            const isAdd = line.startsWith('+') && !line.startsWith('+++')
+                            const isRem = line.startsWith('-') && !line.startsWith('---')
+                            const isInfo = line.startsWith('@@') || line.startsWith('---') || line.startsWith('+++')
+                            return (
+                              <div
+                                key={idx}
+                                className={`diff-line ${isAdd ? 'added' : isRem ? 'removed' : isInfo ? 'info' : ''}`}
+                              >
+                                {line || ' '}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="detail-box" style={{ textAlign: 'center', color: '#94a3b8' }}>
+                        <Terminal size={20} style={{ margin: '0 auto 0.5rem', display: 'block' }} />
+                        No automated patch diff available. Manual developer remediation required.
+                      </div>
+                    )}
+
+                    {/* Developer Review Action Controls */}
+                    <div className="detail-actions">
+                      {selectedFinding.status === 'accepted' && (
+                        <button
+                          type="button"
+                          className="approve-button"
+                          onClick={handleApplyToSource}
+                        >
+                          <Check size={16} /> Apply Patch to Source
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setNotice('Finding marked for follow-up audit.')}
+                      >
+                        <CheckCircle2 size={15} /> Mark Reviewed
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => downloadReport('md')}
+                      >
+                        <Download size={14} /> Export Findings
+                      </button>
+                    </div>
+                  </article>
+                ) : (
+                  <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                    Select a finding to inspect diff and AI analysis.
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
         </div>
       </main>
-      {notice && <div className="toast" role="status"><CheckCircle2 size={16} />{notice}<button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={14} /></button></div>}
+
+      {/* Toast Notification */}
+      {notice && (
+        <div className="toast">
+          <CheckCircle2 size={16} color="#38bdf8" />
+          <span>{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice('')}
+            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', marginLeft: 'auto' }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -184,10 +184,25 @@ def fix_tls(text, f, ctx):
     return None
 
 
+def fix_debug(text, f, ctx):
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == "DEBUG":
+                    if isinstance(node.value, ast.Constant) and node.value.value is True:
+                        src = Src(text)
+                        s, e = src.span(node.value)
+                        src.replace(s, e, "False")
+                        return src.result()
+    return None
+
+
 FIXERS = {
     "AP001": fix_sqli,
     "AP002": fix_eval,
     "AP003": fix_weak_hash,
     "AP004": fix_yaml,
     "AP005": fix_tls,
+    "DAST001": fix_debug,
 }

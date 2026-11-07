@@ -1,6 +1,7 @@
 {
   "project": "vulnerable_app",
-  "generated_at": "2026-10-28T04:15:18+00:00",
+  "repo_path": "C:\\projects\\AIvul\\examples\\vulnerable_app",
+  "generated_at": "2026-11-07T13:26:37+00:00",
   "python": "3.13.5",
   "authorized": true,
   "clean_scan": false,
@@ -8,20 +9,24 @@
   "applied_to_source": false,
   "files_skipped_unparsable": [],
   "counts": {
-    "found": 7,
-    "accepted": 4,
+    "found": 8,
+    "sast_count": 7,
+    "dast_count": 1,
+    "accepted": 6,
     "rejected": 1,
-    "manual_review": 2
+    "manual_review": 1
   },
   "metrics": {
     "stage_seconds": {
-      "copy_project": 0.017,
-      "baseline_tests": 0.151,
-      "scan": 0.003,
-      "total": 1.239
+      "copy_project": 0.023,
+      "baseline_tests": 0.191,
+      "sast_scan": 0.004,
+      "dast_scan": 0.006,
+      "risk_analysis": 0.0,
+      "total": 1.561
     },
-    "mean_seconds_per_accepted_fix": 0.172,
-    "total_seconds": 1.239
+    "mean_seconds_per_accepted_fix": 0.187,
+    "total_seconds": 1.561
   },
   "findings": [
     {
@@ -36,14 +41,25 @@
       "category": "Code injection",
       "cwe": "CWE-95",
       "fixable": true,
+      "scanner_type": "SAST",
+      "risk_score": 9.8,
+      "cvss_base": 9.8,
+      "owasp": "A03:2021-Injection",
+      "confidence": 99,
+      "explanation": "The built-in `eval()` function is invoked with dynamic or untrusted input. In Python, `eval()` executes arbitrary Python code in the current runtime context, enabling remote code execution (RCE) and full host compromise.",
+      "remediation_guide": "Replace `eval()` with `ast.literal_eval()` when parsing Python literal expressions (strings, numbers, tuples, lists, dicts, booleans, and None), or use `json.loads()` for structured data.",
+      "ai_analysis": "### AI-Assisted Security Analysis: eval() on dynamic input\n\n**Classification:** CWE-95 (A03:2021-Injection) | **Severity:** CRITICAL\n\n**Root Cause:** In `app/utils.py` at line 5, the application performs: `return eval(expr)`. The built-in `eval()` function is invoked with dynamic or untrusted input. In Python, `eval()` executes arbitrary Python code in the current runtime context, enabling remote code execution (RCE) and full host compromise.\n\n**Attack Vector & Impact:** Remote code execution (RCE), complete system takeover, arbitrary file access.\n\n**Recommended Remediation:** Replace `eval()` with `ast.literal_eval()` when parsing Python literal expressions (strings, numbers, tuples, lists, dicts, booleans, and None), or use `json.loads()` for structured data.",
+      "patch_strategy": "rule_template",
       "status": "accepted",
-      "reason": "Tests pass and rescan no longer reports it.",
-      "repair_seconds": 0.00027859999681822956,
-      "test_seconds": 0.1378238000033889,
-      "rescan_seconds": 0.002088599998387508,
-      "remediation_seconds": 0.14019099999859463,
+      "reason": "Patch passed safety checks, project tests passed, and rescan verified fix.",
+      "repair_seconds": 0.0003412999212741852,
+      "test_seconds": 0.1877107999753207,
+      "rescan_seconds": 0.00978879991453141,
+      "remediation_seconds": 0.1978408998111263,
       "patch_file": "patches/01-AP002-app_utils.py.diff",
-      "diff": "--- a/app/utils.py\n+++ b/app/utils.py\n@@ -1,8 +1,9 @@\n import hashlib\n+import ast\n \n \n def parse_discount(expr):\n-    return eval(expr)\n+    return ast.literal_eval(expr)\n \n \n def cache_key(text):\n"
+      "diff": "--- a/app/utils.py\n+++ b/app/utils.py\n@@ -1,8 +1,9 @@\n import hashlib\n+import ast\n \n \n def parse_discount(expr):\n-    return eval(expr)\n+    return ast.literal_eval(expr)\n \n \n def cache_key(text):\n",
+      "safety_validation_ok": true,
+      "safety_issues": []
     },
     {
       "rule_id": "AP006",
@@ -57,14 +73,57 @@
       "category": "Secrets",
       "cwe": "CWE-798",
       "fixable": false,
-      "status": "manual_review",
-      "reason": "No supported automatic repair rule.",
-      "repair_seconds": 0.0,
-      "test_seconds": 0.0,
-      "rescan_seconds": 0.0,
-      "remediation_seconds": 0.0,
-      "patch_file": null,
-      "diff": null
+      "scanner_type": "SAST",
+      "risk_score": 7.4,
+      "cvss_base": 7.5,
+      "owasp": "A07:2021-Identification and Authentication Failures",
+      "confidence": 90,
+      "explanation": "Sensitive credentials such as passwords, API keys, or tokens are hardcoded into source files. Hardcoded secrets are easily extracted via source repositories, build artifacts, or application logs.",
+      "remediation_guide": "Rotate the exposed secret immediately. Extract credentials into environment variables (e.g., using `os.environ.get(...)`) or a dedicated secret management vault.",
+      "ai_analysis": "### AI-Assisted Security Analysis: Hardcoded credential\n\n**Classification:** CWE-798 (A07:2021-Identification and Authentication Failures) | **Severity:** HIGH\n\n**Root Cause:** In `app/config.py` at line 2, the application performs: `API_PASSWORD = \"****\"`. Sensitive credentials such as passwords, API keys, or tokens are hardcoded into source files. Hardcoded secrets are easily extracted via source repositories, build artifacts, or application logs.\n\n**Attack Vector & Impact:** Unauthorized system access, compromised third-party accounts, privilege escalation.\n\n**Recommended Remediation:** Rotate the exposed secret immediately. Extract credentials into environment variables (e.g., using `os.environ.get(...)`) or a dedicated secret management vault.",
+      "patch_strategy": "ai_assisted_rag",
+      "status": "accepted",
+      "reason": "Patch passed safety checks, project tests passed, and rescan verified fix.",
+      "repair_seconds": 0.00018789991736412048,
+      "test_seconds": 0.17807509994599968,
+      "rescan_seconds": 0.010041099973022938,
+      "remediation_seconds": 0.18830409983638674,
+      "patch_file": "patches/02-AP006-app_config.py.diff",
+      "diff": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,3 +1,4 @@\n+import os\n DB_PATH = \"app.db\"\n-API_PASSWORD = \"hunter2-prod-key\"\n-DEBUG = True\n+API_PASSWORD = os.environ.get(\"API_PASSWORD\", \"\")\n+DEBUG = True",
+      "safety_validation_ok": true,
+      "safety_issues": []
+    },
+    {
+      "rule_id": "DAST001",
+      "file": "app/config.py",
+      "line": 4,
+      "col": 0,
+      "snippet": "DEBUG = True",
+      "fingerprint": "5b4d623a18",
+      "title": "Insecure runtime debug mode active",
+      "severity": "high",
+      "category": "Security misconfiguration",
+      "cwe": "CWE-489",
+      "fixable": true,
+      "scanner_type": "DAST",
+      "risk_score": 7.4,
+      "cvss_base": 7.5,
+      "owasp": "A05:2021-Security Misconfiguration",
+      "confidence": 95,
+      "explanation": "Application runtime configuration has `DEBUG = True` enabled. Active debug modes in runtime often expose interactive tracebacks, internal configuration, secret keys, and interactive debug consoles.",
+      "remediation_guide": "Set `DEBUG = False` in runtime configuration or load debug setting dynamically from an environment variable with a safe default.",
+      "ai_analysis": "### AI-Assisted Security Analysis: Insecure runtime debug mode active\n\n**Classification:** CWE-489 (A05:2021-Security Misconfiguration) | **Severity:** HIGH\n\n**Root Cause:** In `app/config.py` at line 3, the application performs: `DEBUG = True`. Application runtime configuration has `DEBUG = True` enabled. Active debug modes in runtime often expose interactive tracebacks, internal configuration, secret keys, and interactive debug consoles.\n\n**Attack Vector & Impact:** Information disclosure, credential leakage, possible remote code execution via debug consoles.\n\n**Recommended Remediation:** Set `DEBUG = False` in runtime configuration or load debug setting dynamically from an environment variable with a safe default.",
+      "patch_strategy": "rule_template",
+      "status": "accepted",
+      "reason": "Patch passed safety checks, project tests passed, and rescan verified fix.",
+      "repair_seconds": 0.0001227000029757619,
+      "test_seconds": 0.18324539996683598,
+      "rescan_seconds": 0.010018999921157956,
+      "remediation_seconds": 0.1933870998909697,
+      "patch_file": "patches/03-DAST001-app_config.py.diff",
+      "diff": "--- a/app/config.py\n+++ b/app/config.py\n@@ -1,4 +1,4 @@\n import os\n DB_PATH = \"app.db\"\n API_PASSWORD = os.environ.get(\"API_PASSWORD\", \"\")\n-DEBUG = True+DEBUG = False",
+      "safety_validation_ok": true,
+      "safety_issues": []
     },
     {
       "rule_id": "AP001",
@@ -78,14 +137,25 @@
       "category": "Injection",
       "cwe": "CWE-89",
       "fixable": true,
+      "scanner_type": "SAST",
+      "risk_score": 8.8,
+      "cvss_base": 8.8,
+      "owasp": "A03:2021-Injection",
+      "confidence": 98,
+      "explanation": "Untrusted input is concatenated, formatted, or interpolated directly into an SQL statement executed by a database cursor. An attacker can manipulate the query structure to bypass authentication, view unauthorized data, or modify database records.",
+      "remediation_guide": "Use parameterized queries with placeholder binding (e.g., '?' for SQLite or '%s' for PostgreSQL/MySQL) and pass variables as a separate parameter sequence. Never construct SQL commands by joining or formatting strings with user input.",
+      "ai_analysis": "### AI-Assisted Security Analysis: SQL injection via dynamically built query\n\n**Classification:** CWE-89 (A03:2021-Injection) | **Severity:** HIGH\n\n**Root Cause:** In `app/db.py` at line 3, the application performs: `cur.execute(f\"SELECT id, username FROM users WHERE username = '{username}'\")`. Untrusted input is concatenated, formatted, or interpolated directly into an SQL statement executed by a database cursor. An attacker can manipulate the query structure to bypass authentication, view unauthorized data, or modify database records.\n\n**Attack Vector & Impact:** Data breach, data loss, unauthorized administrative access, privilege escalation.\n\n**Recommended Remediation:** Use parameterized queries with placeholder binding (e.g., '?' for SQLite or '%s' for PostgreSQL/MySQL) and pass variables as a separate parameter sequence. Never construct SQL commands by joining or formatting strings with user input.",
+      "patch_strategy": "rule_template",
       "status": "accepted",
-      "reason": "Tests pass and rescan no longer reports it.",
-      "repair_seconds": 0.000291000003926456,
-      "test_seconds": 0.14795869999943534,
-      "rescan_seconds": 0.0020374000014271587,
-      "remediation_seconds": 0.15028710000478895,
-      "patch_file": "patches/02-AP001-app_db.py.diff",
-      "diff": "--- a/app/db.py\n+++ b/app/db.py\n@@ -1,6 +1,6 @@\n def get_user(conn, username):\n     cur = conn.cursor()\n-    cur.execute(f\"SELECT id, username FROM users WHERE username = '{username}'\")\n+    cur.execute(\"SELECT id, username FROM users WHERE username = ?\", (username,))\n     return cur.fetchone()\n \n \n"
+      "reason": "Patch passed safety checks, project tests passed, and rescan verified fix.",
+      "repair_seconds": 0.0003101000329479575,
+      "test_seconds": 0.1784129999577999,
+      "rescan_seconds": 0.00816369999665767,
+      "remediation_seconds": 0.18688679998740554,
+      "patch_file": "patches/04-AP001-app_db.py.diff",
+      "diff": "--- a/app/db.py\n+++ b/app/db.py\n@@ -1,6 +1,6 @@\n def get_user(conn, username):\n     cur = conn.cursor()\n-    cur.execute(f\"SELECT id, username FROM users WHERE username = '{username}'\")\n+    cur.execute(\"SELECT id, username FROM users WHERE username = ?\", (username,))\n     return cur.fetchone()\n \n \n",
+      "safety_validation_ok": true,
+      "safety_issues": []
     },
     {
       "rule_id": "AP001",
@@ -99,14 +169,25 @@
       "category": "Injection",
       "cwe": "CWE-89",
       "fixable": true,
+      "scanner_type": "SAST",
+      "risk_score": 8.8,
+      "cvss_base": 8.8,
+      "owasp": "A03:2021-Injection",
+      "confidence": 98,
+      "explanation": "Untrusted input is concatenated, formatted, or interpolated directly into an SQL statement executed by a database cursor. An attacker can manipulate the query structure to bypass authentication, view unauthorized data, or modify database records.",
+      "remediation_guide": "Use parameterized queries with placeholder binding (e.g., '?' for SQLite or '%s' for PostgreSQL/MySQL) and pass variables as a separate parameter sequence. Never construct SQL commands by joining or formatting strings with user input.",
+      "ai_analysis": "### AI-Assisted Security Analysis: SQL injection via dynamically built query\n\n**Classification:** CWE-89 (A03:2021-Injection) | **Severity:** HIGH\n\n**Root Cause:** In `app/db.py` at line 9, the application performs: `cur.execute(\"SELECT id, total FROM orders WHERE status = '\" + status + \"'\")`. Untrusted input is concatenated, formatted, or interpolated directly into an SQL statement executed by a database cursor. An attacker can manipulate the query structure to bypass authentication, view unauthorized data, or modify database records.\n\n**Attack Vector & Impact:** Data breach, data loss, unauthorized administrative access, privilege escalation.\n\n**Recommended Remediation:** Use parameterized queries with placeholder binding (e.g., '?' for SQLite or '%s' for PostgreSQL/MySQL) and pass variables as a separate parameter sequence. Never construct SQL commands by joining or formatting strings with user input.",
+      "patch_strategy": "rule_template",
       "status": "accepted",
-      "reason": "Tests pass and rescan no longer reports it.",
-      "repair_seconds": 0.00029039999935775995,
-      "test_seconds": 0.14606389999971725,
-      "rescan_seconds": 0.0024119999943650328,
-      "remediation_seconds": 0.14876629999344004,
-      "patch_file": "patches/03-AP001-app_db.py.diff",
-      "diff": "--- a/app/db.py\n+++ b/app/db.py\n@@ -6,7 +6,7 @@\n \n def search_orders(conn, status):\n     cur = conn.cursor()\n-    cur.execute(\"SELECT id, total FROM orders WHERE status = '\" + status + \"'\")\n+    cur.execute(\"SELECT id, total FROM orders WHERE status = ?\", (status,))\n     return cur.fetchall()\n \n \n"
+      "reason": "Patch passed safety checks, project tests passed, and rescan verified fix.",
+      "repair_seconds": 0.000394799979403615,
+      "test_seconds": 0.1745572000509128,
+      "rescan_seconds": 0.008383500040508807,
+      "remediation_seconds": 0.18333550007082522,
+      "patch_file": "patches/05-AP001-app_db.py.diff",
+      "diff": "--- a/app/db.py\n+++ b/app/db.py\n@@ -6,7 +6,7 @@\n \n def search_orders(conn, status):\n     cur = conn.cursor()\n-    cur.execute(\"SELECT id, total FROM orders WHERE status = '\" + status + \"'\")\n+    cur.execute(\"SELECT id, total FROM orders WHERE status = ?\", (status,))\n     return cur.fetchall()\n \n \n",
+      "safety_validation_ok": true,
+      "safety_issues": []
     },
     {
       "rule_id": "AP001",
@@ -120,14 +201,25 @@
       "category": "Injection",
       "cwe": "CWE-89",
       "fixable": true,
+      "scanner_type": "SAST",
+      "risk_score": 8.8,
+      "cvss_base": 8.8,
+      "owasp": "A03:2021-Injection",
+      "confidence": 98,
+      "explanation": "Untrusted input is concatenated, formatted, or interpolated directly into an SQL statement executed by a database cursor. An attacker can manipulate the query structure to bypass authentication, view unauthorized data, or modify database records.",
+      "remediation_guide": "Use parameterized queries with placeholder binding (e.g., '?' for SQLite or '%s' for PostgreSQL/MySQL) and pass variables as a separate parameter sequence. Never construct SQL commands by joining or formatting strings with user input.",
+      "ai_analysis": "### AI-Assisted Security Analysis: SQL injection via dynamically built query\n\n**Classification:** CWE-89 (A03:2021-Injection) | **Severity:** HIGH\n\n**Root Cause:** In `app/db.py` at line 15, the application performs: `cur.execute(f\"SELECT id, name FROM products WHERE name LIKE '%{term}%'\")`. Untrusted input is concatenated, formatted, or interpolated directly into an SQL statement executed by a database cursor. An attacker can manipulate the query structure to bypass authentication, view unauthorized data, or modify database records.\n\n**Attack Vector & Impact:** Data breach, data loss, unauthorized administrative access, privilege escalation.\n\n**Recommended Remediation:** Use parameterized queries with placeholder binding (e.g., '?' for SQLite or '%s' for PostgreSQL/MySQL) and pass variables as a separate parameter sequence. Never construct SQL commands by joining or formatting strings with user input.",
+      "patch_strategy": "manual_review",
       "status": "manual_review",
-      "reason": "Rule is supported, but this code shape cannot be repaired safely automatically.",
-      "repair_seconds": 0.0006301000030362047,
+      "reason": "No automatic rule template or AI patch available for this code pattern.",
+      "repair_seconds": 0.0005810000002384186,
       "test_seconds": 0.0,
       "rescan_seconds": 0.0,
-      "remediation_seconds": 0.0006301000030362047,
+      "remediation_seconds": 0.0005810000002384186,
       "patch_file": null,
-      "diff": null
+      "diff": null,
+      "safety_validation_ok": false,
+      "safety_issues": []
     },
     {
       "rule_id": "AP003",
@@ -136,19 +228,30 @@
       "col": 11,
       "snippet": "return hashlib.sha1(text.encode()).hexdigest()",
       "fingerprint": "d5a1ca7f03",
-      "title": "Weak hash algorithm (MD5 / SHA-1)",
+      "title": "Weak cryptographic hash algorithm (MD5 / SHA-1)",
       "severity": "medium",
       "category": "Cryptography",
       "cwe": "CWE-327",
       "fixable": true,
+      "scanner_type": "SAST",
+      "risk_score": 5.3,
+      "cvss_base": 5.3,
+      "owasp": "A02:2021-Cryptographic Failures",
+      "confidence": 97,
+      "explanation": "The code uses MD5 or SHA-1 for hashing. Both algorithms have known collision attacks and are cryptographically broken for digital signatures, integrity verification, and credential storage.",
+      "remediation_guide": "Use secure collision-resistant hash algorithms such as SHA-256 or SHA-512 from `hashlib`. For password hashing, use dedicated slow algorithms such as Argon2, bcrypt, or scrypt.",
+      "ai_analysis": "### AI-Assisted Security Analysis: Weak cryptographic hash algorithm (MD5 / SHA-1)\n\n**Classification:** CWE-327 (A02:2021-Cryptographic Failures) | **Severity:** MEDIUM\n\n**Root Cause:** In `app/utils.py` at line 9, the application performs: `return hashlib.sha1(text.encode()).hexdigest()`. The code uses MD5 or SHA-1 for hashing. Both algorithms have known collision attacks and are cryptographically broken for digital signatures, integrity verification, and credential storage.\n\n**Attack Vector & Impact:** Hash collision attacks, credential cracking, signature forgery.\n\n**Recommended Remediation:** Use secure collision-resistant hash algorithms such as SHA-256 or SHA-512 from `hashlib`. For password hashing, use dedicated slow algorithms such as Argon2, bcrypt, or scrypt.",
+      "patch_strategy": "rule_template",
       "status": "accepted",
-      "reason": "Tests pass and rescan no longer reports it.",
-      "repair_seconds": 0.0004059999992023222,
-      "test_seconds": 0.2463354999999865,
-      "rescan_seconds": 0.0039509999987785704,
-      "remediation_seconds": 0.2506924999979674,
-      "patch_file": "patches/04-AP003-app_utils.py.diff",
-      "diff": "--- a/app/utils.py\n+++ b/app/utils.py\n@@ -7,7 +7,7 @@\n \n \n def cache_key(text):\n-    return hashlib.sha1(text.encode()).hexdigest()\n+    return hashlib.sha256(text.encode()).hexdigest()\n \n \n def legacy_signature(payload):\n"
+      "reason": "Patch passed safety checks, project tests passed, and rescan verified fix.",
+      "repair_seconds": 0.00019299995619803667,
+      "test_seconds": 0.16425569995772094,
+      "rescan_seconds": 0.008065899950452149,
+      "remediation_seconds": 0.17251459986437112,
+      "patch_file": "patches/06-AP003-app_utils.py.diff",
+      "diff": "--- a/app/utils.py\n+++ b/app/utils.py\n@@ -7,7 +7,7 @@\n \n \n def cache_key(text):\n-    return hashlib.sha1(text.encode()).hexdigest()\n+    return hashlib.sha256(text.encode()).hexdigest()\n \n \n def legacy_signature(payload):\n",
+      "safety_validation_ok": true,
+      "safety_issues": []
     },
     {
       "rule_id": "AP003",
@@ -157,20 +260,144 @@
       "col": 11,
       "snippet": "return hashlib.md5(payload.encode()).hexdigest()",
       "fingerprint": "0d0f96e5e4",
-      "title": "Weak hash algorithm (MD5 / SHA-1)",
+      "title": "Weak cryptographic hash algorithm (MD5 / SHA-1)",
       "severity": "medium",
       "category": "Cryptography",
       "cwe": "CWE-327",
       "fixable": true,
+      "scanner_type": "SAST",
+      "risk_score": 5.3,
+      "cvss_base": 5.3,
+      "owasp": "A02:2021-Cryptographic Failures",
+      "confidence": 97,
+      "explanation": "The code uses MD5 or SHA-1 for hashing. Both algorithms have known collision attacks and are cryptographically broken for digital signatures, integrity verification, and credential storage.",
+      "remediation_guide": "Use secure collision-resistant hash algorithms such as SHA-256 or SHA-512 from `hashlib`. For password hashing, use dedicated slow algorithms such as Argon2, bcrypt, or scrypt.",
+      "ai_analysis": "### AI-Assisted Security Analysis: Weak cryptographic hash algorithm (MD5 / SHA-1)\n\n**Classification:** CWE-327 (A02:2021-Cryptographic Failures) | **Severity:** MEDIUM\n\n**Root Cause:** In `app/utils.py` at line 13, the application performs: `return hashlib.md5(payload.encode()).hexdigest()`. The code uses MD5 or SHA-1 for hashing. Both algorithms have known collision attacks and are cryptographically broken for digital signatures, integrity verification, and credential storage.\n\n**Attack Vector & Impact:** Hash collision attacks, credential cracking, signature forgery.\n\n**Recommended Remediation:** Use secure collision-resistant hash algorithms such as SHA-256 or SHA-512 from `hashlib`. For password hashing, use dedicated slow algorithms such as Argon2, bcrypt, or scrypt.",
+      "patch_strategy": "rule_template",
       "status": "rejected",
-      "reason": "Automated tests failed after the patch.",
-      "repair_seconds": 0.0004056000034324825,
-      "test_seconds": 0.35807049999857554,
-      "rescan_seconds": 0.002002300003368873,
-      "remediation_seconds": 0.3604784000053769,
-      "patch_file": "rejected/05-AP003-app_utils.py.diff",
+      "reason": "Automated tests failed after applying the patch.",
+      "repair_seconds": 0.0002535999519750476,
+      "test_seconds": 0.16528750001452863,
+      "rescan_seconds": 0.008178299991413951,
+      "remediation_seconds": 0.17371939995791763,
+      "patch_file": "rejected/07-AP003-app_utils.py.diff",
       "diff": "--- a/app/utils.py\n+++ b/app/utils.py\n@@ -11,4 +11,4 @@\n \n \n def legacy_signature(payload):\n-    return hashlib.md5(payload.encode()).hexdigest()\n+    return hashlib.sha256(payload.encode()).hexdigest()\n",
-      "test_output": "======================================================================\nFAIL: test_legacy_signature_matches_stored_md5 (tests.test_app.UtilsTests.test_legacy_signature_matches_stored_md5)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"C:\\projects\\autopatch-project\\autopatch-ai\\autopatch-out\\work\\tests\\test_app.py\", line 41, in test_legacy_signature_matches_stored_md5\n    self.assertEqual(utils.legacy_signature(\"order:42\"),\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                     hashlib.md5(b\"order:42\").hexdigest())\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'da68380de022bac727782efee3c495d4ae08ba3233b4976543cb5247b100424a' != 'd978d5672fe1d7dc35804df0b784b958'\n- da68380de022bac727782efee3c495d4ae08ba3233b4976543cb5247b100424a\n+ d978d5672fe1d7dc35804df0b784b958\n\n\n----------------------------------------------------------------------\nRan 7 tests in 0.004s\n\nFAILED (failures=1)\n"
+      "safety_validation_ok": true,
+      "safety_issues": [],
+      "test_output": "======================================================================\nFAIL: test_legacy_signature_matches_stored_md5 (tests.test_app.UtilsTests.test_legacy_signature_matches_stored_md5)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"C:\\projects\\AIvul\\autopatch-out\\work\\tests\\test_app.py\", line 41, in test_legacy_signature_matches_stored_md5\n    self.assertEqual(utils.legacy_signature(\"order:42\"),\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                     hashlib.md5(b\"order:42\").hexdigest())\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'da68380de022bac727782efee3c495d4ae08ba3233b4976543cb5247b100424a' != 'd978d5672fe1d7dc35804df0b784b958'\n- da68380de022bac727782efee3c495d4ae08ba3233b4976543cb5247b100424a\n+ d978d5672fe1d7dc35804df0b784b958\n\n\n----------------------------------------------------------------------\nRan 7 tests in 0.003s\n\nFAILED (failures=1)\n"
     }
-  ]
+  ],
+  "flow_execution": {
+    "A_user_input": {
+      "status": "completed",
+      "project": "vulnerable_app"
+    },
+    "B_input_project": {
+      "status": "completed",
+      "path": "C:\\projects\\AIvul\\examples\\vulnerable_app"
+    },
+    "C_authorization_validation": {
+      "status": "completed",
+      "details": {
+        "authorized": true,
+        "valid": true,
+        "repo_path": "C:\\projects\\AIvul\\examples\\vulnerable_app",
+        "config": {
+          "authorized": true,
+          "disabled_rules": [],
+          "placeholder": "?"
+        },
+        "python_files_count": 6,
+        "test_suite_detected": true,
+        "test_command": "python -m unittest discover -s tests -t . -q",
+        "errors": [],
+        "warnings": []
+      }
+    },
+    "D_orchestrator_init": {
+      "status": "completed"
+    },
+    "E_sast_scanner": {
+      "status": "completed",
+      "findings_count": 7
+    },
+    "F_dast_scanner": {
+      "status": "completed",
+      "findings_count": 1
+    },
+    "G_vulnerability_detection": {
+      "status": "completed",
+      "total_detected": 8
+    },
+    "H_risk_analysis": {
+      "status": "completed",
+      "classified_count": 8
+    },
+    "I_vuln_database": {
+      "status": "completed",
+      "queried_rules": [
+        "AP002",
+        "AP006",
+        "AP001",
+        "AP003",
+        "DAST001"
+      ]
+    },
+    "J_remediation_engine": {
+      "status": "completed"
+    },
+    "K_security_rules": {
+      "status": "completed"
+    },
+    "L_ai_rag_extension": {
+      "status": "completed",
+      "enabled": true
+    },
+    "M_patch_generation": {
+      "status": "completed",
+      "patches_generated": 7
+    },
+    "N_patch_safety_validation": {
+      "status": "completed"
+    },
+    "O_apply_to_project_copy": {
+      "status": "completed"
+    },
+    "P_automated_testing": {
+      "status": "completed"
+    },
+    "Q_rescan_verification": {
+      "status": "completed"
+    },
+    "R_decision": {
+      "status": "completed",
+      "counts": {
+        "accepted": 6,
+        "rejected": 1,
+        "manual_review": 1
+      }
+    },
+    "S_accepted": {
+      "status": "completed",
+      "count": 6
+    },
+    "T_rejected": {
+      "status": "completed",
+      "count": 2
+    },
+    "U_final_reports": {
+      "status": "completed"
+    },
+    "V_json_report": {
+      "status": "completed",
+      "path": "C:\\projects\\AIvul\\autopatch-out\\report.json"
+    },
+    "W_markdown_report": {
+      "status": "completed",
+      "path": "C:\\projects\\AIvul\\autopatch-out\\report.md"
+    },
+    "X_developer_review": {
+      "status": "ready"
+    }
+  }
 }

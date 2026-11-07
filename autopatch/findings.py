@@ -16,6 +16,15 @@ class Finding:
     category: str = ""
     cwe: str = ""
     fixable: bool = False
+    scanner_type: str = "SAST"
+    risk_score: float = 5.0
+    cvss_base: float = 5.0
+    owasp: str = ""
+    confidence: int = 95
+    explanation: str = ""
+    remediation_guide: str = ""
+    ai_analysis: str = ""
+    patch_strategy: str = ""
 
     def to_dict(self):
         return asdict(self)
